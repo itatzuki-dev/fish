@@ -1,128 +1,112 @@
-local Players=game:GetService("Players")
-local ReplicatedStorage=game:GetService("ReplicatedStorage")
-local UserInputService=game:GetService("UserInputService")
-local RunService=game:GetService("RunService")
-local VirtualInputManager=game:GetService("VirtualInputManager")
+local RunService = game:GetService("RunService")
 
-local Player=Players.LocalPlayer
-local PlayerGui=Player:WaitForChild("PlayerGui")
-local Events=ReplicatedStorage:WaitForChild("Events")
+local cloneref = (cloneref or clonereference or function(instance)
+	return instance
+end)
 
-if _G.ZNiggaController and _G.ZNiggaController.Stop then
-	pcall(function()
-		_G.ZNiggaController.Stop()
+local ReplicatedStorage = cloneref(game:GetService("ReplicatedStorage"))
+local HttpService = cloneref(game:GetService("HttpService"))
+
+local WindUI
+
+do
+	local ok, result = pcall(function()
+		return require("./src/Init")
 	end)
+
+	if ok then
+		WindUI = result
+	else
+		if cloneref(game:GetService("RunService")):IsStudio() then
+			WindUI = require(
+				cloneref(
+					ReplicatedStorage:WaitForChild("WindUI"):WaitForChild("Init")
+				)
+			)
+		else
+			WindUI = loadstring(
+				game:HttpGet(
+					"https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"
+				)
+			)()
+		end
+	end
 end
 
-local Controller={}
-_G.ZNiggaController=Controller
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
 
-local FishingEvent=Events:WaitForChild("Fishing")
-local FishingMinigame=Events:WaitForChild("FishingMinigame")
-local UseSkill=Events:WaitForChild("UseSkill")
+local Player = Players.LocalPlayer
+local PlayerGui = Player:WaitForChild("PlayerGui")
+local Events = ReplicatedStorage:WaitForChild("Events")
 
-local FISH_DISTANCE=5
-local TOOL_CHECK_INTERVAL=1
-local SKILL_START_DELAY=5
-local SKILL_INTERVAL=0.1
+local FishingEvent = Events:WaitForChild("Fishing")
+local FishingMinigame = Events:WaitForChild("FishingMinigame")
+local UseSkill = Events:WaitForChild("UseSkill")
+local ReadyTimeFX = Events:WaitForChild("ReadyTimeFX")
+local EquipFishingRod = Events:WaitForChild("EquipFishingRod")
+local VisibleUI = Events:WaitForChild("VisibleUI")
+local ChooseDialogueOption = Events:WaitForChild("ChooseDialogueOption")
+local SellFish = Events:WaitForChild("SellFish")
 
-local Running=true
-local ToolReady=false
-local LastToolCheck=0
+local FISH_DISTANCE = 5
+local TOOL_CHECK_INTERVAL = 1
+local SKILL_START_DELAY = 5
+local SKILL_INTERVAL = 0.1
+local STRONGEST_ROD_INTERVAL = 1
+local AUTO_SELL_INTERVAL = 10
 
-local Bar=nil
-local FrozenBarPosition=nil
-local FreezeCFrame=nil
+local Running = true
+local ToolReady = false
+local LastToolCheck = 0
 
-local Connections={}
+local Bar = nil
+local FrozenBarPosition = nil
+local FreezeCFrame = nil
 
-local Settings={
-	AutoFishing=false,
-	BarFreeze=false,
-	PlayerFreeze=false,
-	Z=false,
-	X=false,
-	C=false,
-	V=false
+local Connections = {}
+
+local Settings = {
+	AutoFishing = false,
+	StrongestRod = false,
+	BarFreeze = false,
+	PlayerFreeze = false,
+	AutoSell = false,
+	Z = false,
+	X = false,
+	C = false,
+	V = false,
 }
 
-local SkillTokens={
-	Z=0,
-	X=0,
-	C=0,
-	V=0
+local SkillOrder = {
+	Z = 1,
+	X = 2,
+	C = 3,
+	V = 4,
 }
 
-local SkillRunning={
-	Z=false,
-	X=false,
-	C=false,
-	V=false
+local SkillTokens = {
+	Z = 0,
+	X = 0,
+	C = 0,
+	V = 0,
 }
 
-local ScreenGui
-local Main
-local Mini
-
-local function Connect(signal,callback)
-	local c=signal:Connect(callback)
-	table.insert(Connections,c)
-	return c
+local function Connect(signal, callback)
+	local Connection = signal:Connect(callback)
+	table.insert(Connections, Connection)
+	return Connection
 end
 
 local function DisconnectAll()
-	for _,c in ipairs(Connections) do
+	for _, Connection in ipairs(Connections) do
 		pcall(function()
-			c:Disconnect()
+			Connection:Disconnect()
 		end)
 	end
+
 	table.clear(Connections)
-end
-
-local function StopSkill(skill)
-	SkillTokens[skill]+=1
-	SkillRunning[skill]=false
-end
-
-local function StopAllSkills()
-	for skill in pairs(SkillRunning) do
-		StopSkill(skill)
-	end
-end
-
-function Controller.Stop()
-	if not Running then
-		return
-	end
-
-	Running=false
-
-	Settings.AutoFishing=false
-	Settings.BarFreeze=false
-	Settings.PlayerFreeze=false
-	Settings.Z=false
-	Settings.X=false
-	Settings.C=false
-	Settings.V=false
-
-	ToolReady=false
-	Bar=nil
-	FrozenBarPosition=nil
-	FreezeCFrame=nil
-
-	StopAllSkills()
-	DisconnectAll()
-
-	if ScreenGui then
-		pcall(function()
-			ScreenGui:Destroy()
-		end)
-		ScreenGui=nil
-	end
-
-	if _G.ZNiggaController==Controller then
-		_G.ZNiggaController=nil
-	end
 end
 
 local function GetCharacter()
@@ -130,7 +114,7 @@ local function GetCharacter()
 end
 
 local function GetRoot()
-	local Character=GetCharacter()
+	local Character = GetCharacter()
 
 	if not Character then
 		return nil
@@ -140,13 +124,13 @@ local function GetRoot()
 end
 
 local function HasTool()
-	local Character=GetCharacter()
+	local Character = GetCharacter()
 
 	if not Character then
 		return false
 	end
 
-	return Character:FindFirstChild("Tool")~=nil
+	return Character:FindFirstChild("Tool") ~= nil
 end
 
 local function PressOne()
@@ -174,25 +158,25 @@ local function PressOne()
 end
 
 local function FindBar()
-	local MainGui=PlayerGui:FindFirstChild("MainGui")
+	local MainGui = PlayerGui:FindFirstChild("MainGui")
 
 	if not MainGui then
 		return nil
 	end
 
-	local Fishing=MainGui:FindFirstChild("Fishing")
+	local Fishing = MainGui:FindFirstChild("Fishing")
 
 	if not Fishing then
 		return nil
 	end
 
-	local BarFrame=Fishing:FindFirstChild("BarFrame")
+	local BarFrame = Fishing:FindFirstChild("BarFrame")
 
 	if not BarFrame then
 		return nil
 	end
 
-	local Found=BarFrame:FindFirstChild("Bar")
+	local Found = BarFrame:FindFirstChild("Bar")
 
 	if Found and Found:IsA("GuiObject") then
 		return Found
@@ -202,16 +186,16 @@ local function FindBar()
 end
 
 local function EnableBarFreeze()
-	Bar=FindBar()
+	Bar = FindBar()
 
 	if Bar then
-		FrozenBarPosition=Bar.Position
+		FrozenBarPosition = Bar.Position
 	end
 end
 
 local function DisableBarFreeze()
-	FrozenBarPosition=nil
-	Bar=nil
+	FrozenBarPosition = nil
+	Bar = nil
 end
 
 local function ApplyBarFreeze()
@@ -220,35 +204,35 @@ local function ApplyBarFreeze()
 	end
 
 	if not Bar or not Bar.Parent then
-		Bar=FindBar()
+		Bar = FindBar()
 
 		if Bar then
-			FrozenBarPosition=Bar.Position
+			FrozenBarPosition = Bar.Position
 		end
 	end
 
 	if Bar and FrozenBarPosition then
-		Bar.Position=FrozenBarPosition
+		Bar.Position = FrozenBarPosition
 	end
 end
 
 local function EnablePlayerFreeze()
-	local Root=GetRoot()
+	local Root = GetRoot()
 
 	if Root then
-		FreezeCFrame=Root.CFrame
+		FreezeCFrame = Root.CFrame
 	end
 end
 
 local function DisablePlayerFreeze()
-	FreezeCFrame=nil
+	FreezeCFrame = nil
 
-	local Root=GetRoot()
+	local Root = GetRoot()
 
 	if Root then
 		pcall(function()
-			Root.AssemblyLinearVelocity=Vector3.zero
-			Root.AssemblyAngularVelocity=Vector3.zero
+			Root.AssemblyLinearVelocity = Vector3.zero
+			Root.AssemblyAngularVelocity = Vector3.zero
 		end)
 	end
 end
@@ -262,61 +246,47 @@ local function ApplyPlayerFreeze()
 		EnablePlayerFreeze()
 	end
 
-	local Root=GetRoot()
+	local Root = GetRoot()
 
 	if Root and FreezeCFrame then
 		pcall(function()
-			Root.CFrame=FreezeCFrame
-			Root.AssemblyLinearVelocity=Vector3.zero
-			Root.AssemblyAngularVelocity=Vector3.zero
+			Root.CFrame = FreezeCFrame
+			Root.AssemblyLinearVelocity = Vector3.zero
+			Root.AssemblyAngularVelocity = Vector3.zero
 		end)
 	end
 end
 
-Connect(RunService.RenderStepped,function()
-	if Running and Settings.BarFreeze then
-		ApplyBarFreeze()
-	end
-end)
-
-Connect(RunService.Heartbeat,function()
-	if Running and Settings.PlayerFreeze then
-		ApplyPlayerFreeze()
-	end
-end)
-
 local function GetFishingCFrame()
-	local Character=GetCharacter()
+	local Character = GetCharacter()
 
 	if not Character then
 		return nil
 	end
 
-	local Root=Character:FindFirstChild("HumanoidRootPart")
+	local Root = Character:FindFirstChild("HumanoidRootPart")
 
 	if not Root then
 		return nil
 	end
 
-	local Look=Root.CFrame.LookVector
+	local Look = Root.CFrame.LookVector
 
-	local Direction=Vector3.new(
+	local Direction = Vector3.new(
 		Look.X,
 		0,
 		Look.Z
 	)
 
-	if Direction.Magnitude<=0.001 then
+	if Direction.Magnitude <= 0.001 then
 		return nil
 	end
 
-	Direction=Direction.Unit
+	Direction = Direction.Unit
 
-	local Position=
-		Root.Position+
-		Direction*FISH_DISTANCE
+	local Position = Root.Position + Direction * FISH_DISTANCE
 
-	Position=Vector3.new(
+	Position = Vector3.new(
 		Position.X,
 		Root.Position.Y,
 		Position.Z
@@ -324,30 +294,216 @@ local function GetFishingCFrame()
 
 	return CFrame.lookAt(
 		Position,
-		Position+Direction
+		Position + Direction
 	)
 end
 
-local function StartSkill(Skill)
+local function FindStrongestRod()
+	if not Running then
+		return nil, nil
+	end
+
+	local FisherGUI = PlayerGui:FindFirstChild("Fisher_GUI")
+
+	if not FisherGUI then
+		return nil, nil
+	end
+
+	local Fisher = FisherGUI:FindFirstChild("Fisher")
+
+	if not Fisher then
+		return nil, nil
+	end
+
+	local Inventory = Fisher:FindFirstChild("Fisher_Inventory")
+
+	if not Inventory then
+		return nil, nil
+	end
+
+	local Menu = Inventory:FindFirstChild("Menu")
+
+	if not Menu then
+		return nil, nil
+	end
+
+	local RodFolder = Menu:FindFirstChild("Rod")
+
+	if not RodFolder then
+		return nil, nil
+	end
+
+	local StrongestRod = nil
+	local StrongestPower = -math.huge
+
+	for _, Rod in ipairs(RodFolder:GetChildren()) do
+		if not Rod:IsA("Frame") then
+			continue
+		end
+
+		if not Rod.Name:lower():find("rod", 1, true) then
+			continue
+		end
+
+		if Rod.Visible ~= true then
+			continue
+		end
+
+		local Frame = Rod:FindFirstChild("Frame")
+
+		if not Frame then
+			continue
+		end
+
+		local PowerLabel = Frame:FindFirstChild("Power")
+
+		if not PowerLabel then
+			continue
+		end
+
+		if not PowerLabel:IsA("TextLabel") then
+			continue
+		end
+
+		local Power = tonumber(
+			PowerLabel.Text:match("Power:%s*(%d+)")
+		)
+
+		if not Power then
+			continue
+		end
+
+		if Power > StrongestPower then
+			StrongestPower = Power
+			StrongestRod = Rod
+		end
+	end
+
+	return StrongestRod, StrongestPower
+end
+
+local function EquipStrongestRod()
+	if not Running or not Settings.StrongestRod then
+		return
+	end
+
+	local StrongestRod, StrongestPower = FindStrongestRod()
+
+	if not StrongestRod or not StrongestPower then
+		return
+	end
+
+	local Character = GetCharacter()
+
+	if not Character then
+		return
+	end
+
+	local CurrentRod = nil
+
+	for _, Child in ipairs(Character:GetChildren()) do
+		if Child:IsA("Tool") then
+			CurrentRod = Child
+			break
+		end
+	end
+
+	local CurrentPower = -math.huge
+
+	if CurrentRod then
+		local FisherGUI = PlayerGui:FindFirstChild("Fisher_GUI")
+
+		if FisherGUI then
+			local Fisher = FisherGUI:FindFirstChild("Fisher")
+
+			if Fisher then
+				local Inventory = Fisher:FindFirstChild("Fisher_Inventory")
+
+				if Inventory then
+					local Menu = Inventory:FindFirstChild("Menu")
+
+					if Menu then
+						local RodFolder = Menu:FindFirstChild("Rod")
+
+						if RodFolder then
+							local RodData = RodFolder:FindFirstChild(CurrentRod.Name)
+
+							if RodData then
+								local Frame = RodData:FindFirstChild("Frame")
+
+								if Frame then
+									local PowerLabel = Frame:FindFirstChild("Power")
+
+									if PowerLabel and PowerLabel:IsA("TextLabel") then
+										CurrentPower = tonumber(
+											PowerLabel.Text:match("Power:%s*(%d+)")
+										) or -math.huge
+									end
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+
+	if CurrentPower < StrongestPower then
+		pcall(function()
+			EquipFishingRod:InvokeServer(StrongestRod.Name)
+		end)
+
+		task.wait(0.1)
+	end
+
+	if not HasTool() then
+		for _ = 1, 20 do
+			if not Running or not Settings.StrongestRod then
+				break
+			end
+
+			if HasTool() then
+				break
+			end
+
+			PressOne()
+			task.wait(0.1)
+		end
+	end
+end
+
+local function SellAll()
 	if not Running then
 		return
 	end
 
-	if not Settings[Skill] then
-		return
-	end
+	pcall(function()
+		SellFish:FireServer("All")
+	end)
+end
 
-	if not Settings.AutoFishing then
-		return
-	end
+local function StopSkill(Skill)
+	SkillTokens[Skill] += 1
+end
 
-	if not ToolReady or not HasTool() then
+local function StopAllSkills()
+	for Skill in pairs(SkillTokens) do
+		StopSkill(Skill)
+	end
+end
+
+local function StartSkill(Skill)
+	if not Running
+		or not Settings[Skill]
+		or not Settings.AutoFishing
+		or not ToolReady
+		or not HasTool() then
 		return
 	end
 
 	StopSkill(Skill)
 
-	local Token=SkillTokens[Skill]
+	local Token = SkillTokens[Skill]
 
 	task.spawn(function()
 		task.wait(SKILL_START_DELAY)
@@ -357,18 +513,16 @@ local function StartSkill(Skill)
 			or not Settings.AutoFishing
 			or not ToolReady
 			or not HasTool()
-			or Token~=SkillTokens[Skill] then
+			or Token ~= SkillTokens[Skill] then
 			return
 		end
-
-		SkillRunning[Skill]=true
 
 		while Running
 			and Settings[Skill]
 			and Settings.AutoFishing
 			and ToolReady
 			and HasTool()
-			and Token==SkillTokens[Skill] do
+			and Token == SkillTokens[Skill] do
 
 			pcall(function()
 				UseSkill:FireServer(Skill)
@@ -376,8 +530,6 @@ local function StartSkill(Skill)
 
 			task.wait(SKILL_INTERVAL)
 		end
-
-		SkillRunning[Skill]=false
 	end)
 end
 
@@ -390,10 +542,20 @@ local function StartEnabledSkills()
 		return
 	end
 
-	for Skill in pairs(SkillRunning) do
+	local OrderedSkills = {}
+
+	for Skill in pairs(SkillOrder) do
 		if Settings[Skill] then
-			StartSkill(Skill)
+			table.insert(OrderedSkills, Skill)
 		end
+	end
+
+	table.sort(OrderedSkills, function(A, B)
+		return SkillOrder[A] < SkillOrder[B]
+	end)
+
+	for _, Skill in ipairs(OrderedSkills) do
+		StartSkill(Skill)
 	end
 end
 
@@ -402,11 +564,16 @@ local function StartFishing()
 		return
 	end
 
+	if Settings.StrongestRod then
+		EquipStrongestRod()
+		task.wait(0.15)
+	end
+
 	if not ToolReady or not HasTool() then
 		return
 	end
 
-	local FishingCFrame=GetFishingCFrame()
+	local FishingCFrame = GetFishingCFrame()
 
 	if not FishingCFrame then
 		return
@@ -425,21 +592,20 @@ local function CheckTool()
 	end
 
 	if not Settings.AutoFishing then
-		ToolReady=false
+		ToolReady = false
 		StopAllSkills()
 		return
 	end
 
 	if HasTool() then
 		if not ToolReady then
-			ToolReady=true
+			ToolReady = true
 
 			task.wait(0.1)
 
 			if Running
 				and Settings.AutoFishing
 				and HasTool() then
-
 				StartFishing()
 			end
 		end
@@ -447,28 +613,40 @@ local function CheckTool()
 		return
 	end
 
-	ToolReady=false
+	ToolReady = false
 	StopAllSkills()
 
-	local Now=os.clock()
+	local Now = os.clock()
 
-	if Now-LastToolCheck<TOOL_CHECK_INTERVAL then
+	if Now - LastToolCheck < TOOL_CHECK_INTERVAL then
 		return
 	end
 
-	LastToolCheck=Now
+	LastToolCheck = Now
 
 	PressOne()
 end
 
-Connect(FishingMinigame.OnClientEvent,function(...)
+Connect(RunService.RenderStepped, function()
+	if Running and Settings.BarFreeze then
+		ApplyBarFreeze()
+	end
+end)
+
+Connect(RunService.Heartbeat, function()
+	if Running and Settings.PlayerFreeze then
+		ApplyPlayerFreeze()
+	end
+end)
+
+Connect(FishingMinigame.OnClientEvent, function(...)
 	if not Running then
 		return
 	end
 
-	local Args={...}
+	local Args = {...}
 
-	if Args[1]~="SessionEnd" then
+	if Args[1] ~= "SessionEnd" then
 		return
 	end
 
@@ -485,10 +663,45 @@ Connect(FishingMinigame.OnClientEvent,function(...)
 	end
 
 	if HasTool() then
-		ToolReady=true
+		ToolReady = true
 		StartFishing()
 	else
-		ToolReady=false
+		ToolReady = false
+	end
+end)
+
+Connect(ReadyTimeFX.OnClientEvent, function(...)
+	if not Running then
+		return
+	end
+
+	local Args = {...}
+
+	if Args[1] ~= "LOCK" then
+		return
+	end
+
+	if not Settings.AutoFishing then
+		return
+	end
+
+	StartEnabledSkills()
+end)
+
+Connect(Player.CharacterAdded, function()
+	if not Running then
+		return
+	end
+
+	ToolReady = false
+	LastToolCheck = 0
+	StopAllSkills()
+	FreezeCFrame = nil
+
+	task.wait(0.5)
+
+	if Running and Settings.AutoFishing then
+		CheckTool()
 	end
 end)
 
@@ -499,300 +712,228 @@ task.spawn(function()
 	end
 end)
 
-Connect(Player.CharacterAdded,function()
-	if not Running then
-		return
-	end
+task.spawn(function()
+	while Running do
+		if Settings.StrongestRod then
+			EquipStrongestRod()
+		end
 
-	ToolReady=false
-	LastToolCheck=0
-	StopAllSkills()
-	FreezeCFrame=nil
-
-	task.wait(0.5)
-
-	if Running and Settings.AutoFishing then
-		CheckTool()
+		task.wait(STRONGEST_ROD_INTERVAL)
 	end
 end)
 
-ScreenGui=Instance.new("ScreenGui")
-ScreenGui.Name="Z'Nigga"
-ScreenGui.ResetOnSpawn=false
-ScreenGui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
-ScreenGui.Parent=PlayerGui
-
-Main=Instance.new("Frame")
-Main.Size=UDim2.fromOffset(265,360)
-Main.Position=UDim2.new(0,25,0.5,-180)
-Main.BackgroundColor3=Color3.fromRGB(18,18,18)
-Main.BorderSizePixel=0
-Main.Parent=ScreenGui
-
-local MainCorner=Instance.new("UICorner")
-MainCorner.CornerRadius=UDim.new(0,12)
-MainCorner.Parent=Main
-
-local Header=Instance.new("Frame")
-Header.Size=UDim2.new(1,0,0,58)
-Header.BackgroundColor3=Color3.fromRGB(25,25,25)
-Header.BorderSizePixel=0
-Header.Parent=Main
-
-local HeaderCorner=Instance.new("UICorner")
-HeaderCorner.CornerRadius=UDim.new(0,12)
-HeaderCorner.Parent=Header
-
-local HeaderBottom=Instance.new("Frame")
-HeaderBottom.Size=UDim2.new(1,0,0,12)
-HeaderBottom.Position=UDim2.new(0,0,1,-12)
-HeaderBottom.BackgroundColor3=Color3.fromRGB(25,25,25)
-HeaderBottom.BorderSizePixel=0
-HeaderBottom.Parent=Header
-
-local Title=Instance.new("TextLabel")
-Title.Size=UDim2.new(1,-90,1,0)
-Title.Position=UDim2.fromOffset(15,0)
-Title.BackgroundTransparency=1
-Title.Text="Z'NIGGA"
-Title.TextColor3=Color3.fromRGB(240,240,240)
-Title.TextSize=17
-Title.Font=Enum.Font.GothamBold
-Title.TextXAlignment=Enum.TextXAlignment.Left
-Title.Parent=Header
-
-local Minimize=Instance.new("TextButton")
-Minimize.Size=UDim2.fromOffset(32,32)
-Minimize.Position=UDim2.new(1,-72,0,13)
-Minimize.BackgroundColor3=Color3.fromRGB(40,40,40)
-Minimize.BorderSizePixel=0
-Minimize.Text="−"
-Minimize.TextColor3=Color3.fromRGB(255,255,255)
-Minimize.TextSize=20
-Minimize.Font=Enum.Font.GothamBold
-Minimize.AutoButtonColor=false
-Minimize.Selectable=false
-Minimize.Parent=Header
-
-local MinCorner=Instance.new("UICorner")
-MinCorner.CornerRadius=UDim.new(0,8)
-MinCorner.Parent=Minimize
-
-local Close=Instance.new("TextButton")
-Close.Size=UDim2.fromOffset(32,32)
-Close.Position=UDim2.new(1,-36,0,13)
-Close.BackgroundColor3=Color3.fromRGB(40,40,40)
-Close.BorderSizePixel=0
-Close.Text="×"
-Close.TextColor3=Color3.fromRGB(255,255,255)
-Close.TextSize=20
-Close.Font=Enum.Font.GothamBold
-Close.AutoButtonColor=false
-Close.Selectable=false
-Close.Parent=Header
-
-local CloseCorner=Instance.new("UICorner")
-CloseCorner.CornerRadius=UDim.new(0,8)
-CloseCorner.Parent=Close
-
-local Content=Instance.new("Frame")
-Content.Size=UDim2.new(1,-20,1,-70)
-Content.Position=UDim2.fromOffset(10,66)
-Content.BackgroundTransparency=1
-Content.Parent=Main
-
-local Layout=Instance.new("UIListLayout")
-Layout.Padding=UDim.new(0,6)
-Layout.SortOrder=Enum.SortOrder.LayoutOrder
-Layout.Parent=Content
-
-local function CreateToggle(Text,Key,Order)
-	local Holder=Instance.new("Frame")
-	Holder.Name=Key
-	Holder.Size=UDim2.new(1,0,0,38)
-	Holder.LayoutOrder=Order
-	Holder.BackgroundColor3=Color3.fromRGB(30,30,30)
-	Holder.BorderSizePixel=0
-	Holder.Parent=Content
-
-	local Corner=Instance.new("UICorner")
-	Corner.CornerRadius=UDim.new(0,8)
-	Corner.Parent=Holder
-
-	local Label=Instance.new("TextLabel")
-	Label.Size=UDim2.new(1,-75,1,0)
-	Label.Position=UDim2.fromOffset(12,0)
-	Label.BackgroundTransparency=1
-	Label.Text=Text
-	Label.TextColor3=Color3.fromRGB(230,230,230)
-	Label.TextSize=13
-	Label.Font=Enum.Font.GothamMedium
-	Label.TextXAlignment=Enum.TextXAlignment.Left
-	Label.Active=false
-	Label.Selectable=false
-	Label.Parent=Holder
-
-	local State=Instance.new("TextLabel")
-	State.Size=UDim2.fromOffset(55,38)
-	State.Position=UDim2.new(1,-60,0,0)
-	State.BackgroundTransparency=1
-	State.Text="OFF"
-	State.TextColor3=Color3.fromRGB(130,130,130)
-	State.TextSize=11
-	State.Font=Enum.Font.GothamBold
-	State.Active=false
-	State.Selectable=false
-	State.Parent=Holder
-
-	local Click=Instance.new("TextButton")
-	Click.Size=UDim2.fromScale(1,1)
-	Click.Position=UDim2.fromScale(0,0)
-	Click.BackgroundTransparency=1
-	Click.BorderSizePixel=0
-	Click.Text=""
-	Click.AutoButtonColor=false
-	Click.Selectable=false
-	Click.Active=true
-	Click.ZIndex=10
-	Click.Parent=Holder
-
-	Click.Activated:Connect(function()
-		if not Running then
-			return
+task.spawn(function()
+	while Running do
+		if Settings.AutoSell then
+			SellAll()
 		end
 
-		Settings[Key]=not Settings[Key]
+		task.wait(AUTO_SELL_INTERVAL)
+	end
+end)
 
-		if Settings[Key] then
-			State.Text="ON"
-			State.TextColor3=Color3.fromRGB(100,220,130)
+local Window = WindUI:CreateWindow({
+	Title = "Z'Nigga",
+	Author = "by phúc",
+	Folder = "Znigga",
+	Icon = "solar:folder-2-bold-duotone",
+	NewElements = true,
+	HideSearchBar = false,
+
+	OpenButton = {
+		Title = "Open Z'Nigga UI",
+		CornerRadius = UDim.new(1, 0),
+		StrokeThickness = 3,
+		Enabled = true,
+		Draggable = true,
+		OnlyMobile = false,
+		Scale = 1,
+
+		Color = ColorSequence.new(
+			Color3.fromHex("#30FF6A"),
+			Color3.fromHex("#e7ff2f")
+		),
+	},
+
+	Topbar = {
+		Height = 44,
+		ButtonsType = "Mac",
+	},
+})
+
+Window:Tag({
+	Title = "v3667",
+	Icon = "github",
+	Color = Color3.fromHex("#1c1c1c"),
+	Border = true,
+})
+
+local MainTab = Window:Tab({
+	Title = "Main",
+	Icon = "house",
+})
+
+local SellTab = Window:Tab({
+	Title = "Sell",
+	Icon = "shopping-cart",
+})
+
+local ShopTab = Window:Tab({
+	Title = "Shop",
+	Icon = "store",
+})
+
+local OtherTab = Window:Tab({
+	Title = "Other",
+	Icon = "settings",
+})
+
+MainTab:Section({
+	Title = "Fishing",
+})
+
+MainTab:Toggle({
+	Title = "Auto Fishing",
+	Default = false,
+	Callback = function(Value)
+		Settings.AutoFishing = Value
+
+		if Value then
+			CheckTool()
 		else
-			State.Text="OFF"
-			State.TextColor3=Color3.fromRGB(130,130,130)
+			ToolReady = false
+			StopAllSkills()
 		end
+	end,
+})
 
-		if Key=="AutoFishing" then
-			if Settings.AutoFishing then
-				CheckTool()
-			else
-				ToolReady=false
-				StopAllSkills()
-			end
+MainTab:Toggle({
+	Title = "Auto Strongest Rod",
+	Default = false,
+	Callback = function(Value)
+		Settings.StrongestRod = Value
 
-		elseif Key=="BarFreeze" then
-			if Settings.BarFreeze then
-				EnableBarFreeze()
-			else
-				DisableBarFreeze()
-			end
-
-		elseif Key=="PlayerFreeze" then
-			if Settings.PlayerFreeze then
-				EnablePlayerFreeze()
-			else
-				DisablePlayerFreeze()
-			end
-
-		elseif Key=="Z"
-			or Key=="X"
-			or Key=="C"
-			or Key=="V" then
-
-			if Settings[Key] then
-				StartSkill(Key)
-			else
-				StopSkill(Key)
-			end
+		if Value then
+			EquipStrongestRod()
 		end
-	end)
+	end,
+})
+
+MainTab:Toggle({
+	Title = "Bar Freeze",
+	Default = false,
+	Callback = function(Value)
+		Settings.BarFreeze = Value
+
+		if Value then
+			EnableBarFreeze()
+		else
+			DisableBarFreeze()
+		end
+	end,
+})
+
+MainTab:Toggle({
+	Title = "Freeze Player",
+	Default = false,
+	Callback = function(Value)
+		Settings.PlayerFreeze = Value
+
+		if Value then
+			EnablePlayerFreeze()
+		else
+			DisablePlayerFreeze()
+		end
+	end,
+})
+
+MainTab:Section({
+	Title = "Auto Skills",
+})
+
+local function CreateSkillToggle(Skill, Order)
+	MainTab:Toggle({
+		Title = "Auto Skill " .. Skill,
+		Default = false,
+		Callback = function(Value)
+			Settings[Skill] = Value
+
+			if Value then
+				StartSkill(Skill)
+			else
+				StopSkill(Skill)
+			end
+		end,
+	})
+
+	MainTab:Slider({
+		Title = "Order " .. Skill,
+		Step = 1,
+		Value = {
+			Min = 1,
+			Max = 4,
+			Default = Order,
+		},
+		Callback = function(Value)
+			SkillOrder[Skill] = tonumber(Value) or Order
+		end,
+	})
 end
 
-CreateToggle("Auto Fishing","AutoFishing",1)
-CreateToggle("Bar Freeze","BarFreeze",2)
-CreateToggle("Freeze Player","PlayerFreeze",3)
-CreateToggle("Skill Z","Z",4)
-CreateToggle("Skill X","X",5)
-CreateToggle("Skill C","C",6)
-CreateToggle("Skill V","V",7)
+CreateSkillToggle("Z", 1)
+CreateSkillToggle("X", 2)
+CreateSkillToggle("C", 3)
+CreateSkillToggle("V", 4)
 
-Mini=Instance.new("TextButton")
-Mini.Name="MiniIcon"
-Mini.Size=UDim2.fromOffset(55,55)
-Mini.Position=UDim2.new(0,25,0.5,-27)
-Mini.BackgroundColor3=Color3.fromRGB(25,25,25)
-Mini.BorderSizePixel=0
-Mini.Text="Z"
-Mini.TextColor3=Color3.fromRGB(255,255,255)
-Mini.TextSize=20
-Mini.Font=Enum.Font.GothamBold
-Mini.AutoButtonColor=false
-Mini.Selectable=false
-Mini.Visible=false
-Mini.Parent=ScreenGui
+SellTab:Section({
+	Title = "Sell",
+})
 
-local MiniCorner=Instance.new("UICorner")
-MiniCorner.CornerRadius=UDim.new(1,0)
-MiniCorner.Parent=Mini
+SellTab:Toggle({
+	Title = "Auto Sell",
+	Default = false,
+	Callback = function(Value)
+		Settings.AutoSell = Value
 
-local Dragging=false
-local DragStart
-local StartPosition
+		if Value then
+			SellAll()
+		end
+	end,
+})
 
-Connect(Header.InputBegan,function(Input)
-	if Input.UserInputType==Enum.UserInputType.MouseButton1
-		or Input.UserInputType==Enum.UserInputType.Touch then
+SellTab:Button({
+	Title = "Sell All",
+	Callback = function()
+		SellAll()
+	end,
+})
 
-		Dragging=true
-		DragStart=Input.Position
-		StartPosition=Main.Position
-	end
-end)
+ShopTab:Section({
+	Title = "Shop",
+})
 
-Connect(UserInputService.InputChanged,function(Input)
-	if not Dragging then
-		return
-	end
+ShopTab:Button({
+	Title = "Trait Reroll",
+	Callback = function()
+		pcall(function()
+			firesignal(
+				VisibleUI.OnClientEvent,
+				"Trait"
+			)
+		end)
+	end,
+})
 
-	if Input.UserInputType==Enum.UserInputType.MouseMovement
-		or Input.UserInputType==Enum.UserInputType.Touch then
-
-		local Delta=Input.Position-DragStart
-
-		Main.Position=UDim2.new(
-			StartPosition.X.Scale,
-			StartPosition.X.Offset+Delta.X,
-			StartPosition.Y.Scale,
-			StartPosition.Y.Offset+Delta.Y
-		)
-	end
-end)
-
-Connect(UserInputService.InputEnded,function(Input)
-	if Input.UserInputType==Enum.UserInputType.MouseButton1
-		or Input.UserInputType==Enum.UserInputType.Touch then
-
-		Dragging=false
-	end
-end)
-
-Connect(Minimize.MouseButton1Click,function()
-	if not Running then
-		return
-	end
-
-	Main.Visible=false
-	Mini.Visible=true
-end)
-
-Connect(Mini.MouseButton1Click,function()
-	if not Running then
-		return
-	end
-
-	Main.Visible=true
-	Mini.Visible=false
-end)
-
-Connect(Close.MouseButton1Click,function()
-	Controller.Stop()
-end)
+ShopTab:Button({
+	Title = "Bait Shop",
+	Callback = function()
+		pcall(function()
+			ChooseDialogueOption:FireServer(
+				"BuyBait",
+				1,
+				"BaitShop",
+				nil
+			)
+		end)
+	end,
+})
