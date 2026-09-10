@@ -13,6 +13,7 @@ local ok, result = pcall(function()
 return require("./src/Init")
 end)
 
+ 
 if ok then
 	WindUI = result
 else
@@ -23,6 +24,7 @@ else
 			loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
 	end
 end
+ 
 
 end
 
@@ -64,10 +66,12 @@ AutoSell = false,
 AutoBuyBait = false,
 AutoTicketQuest = false,
 
+ 
 Z = false,
 X = false,
 C = false,
 V = false
+ 
 
 }
 
@@ -83,9 +87,8 @@ local FishingSession = 0
 
 local SkillLoopToken = 0
 
-local FishingConnection
-local ReadyConnection
 local MinigameConnection
+local ReadyConnection
 local BarConnection
 local PlayerFreezeConnection
 
@@ -101,22 +104,26 @@ end
 local function GetRoot()
 local Character = GetCharacter()
 
+ 
 if not Character then
 	return nil
 end
 
 return Character:FindFirstChild("HumanoidRootPart")
+ 
 
 end
 
 local function HasTool()
 local Character = GetCharacter()
 
+ 
 if not Character then
 	return false
 end
 
 return Character:FindFirstChild("Tool") ~= nil
+ 
 
 end
 
@@ -129,6 +136,7 @@ false,
 game
 )
 
+ 
 	task.wait(0.03)
 
 	VirtualInputManager:SendKeyEvent(
@@ -138,6 +146,7 @@ game
 		game
 	)
 end)
+ 
 
 end
 
@@ -147,6 +156,7 @@ if HasTool() then
 return true
 end
 
+ 
 	PressOne()
 
 	local Start = os.clock()
@@ -161,12 +171,14 @@ end
 end
 
 return false
+ 
 
 end
 
 local function GetFishingCFrame()
 local Root = GetRoot()
 
+ 
 if not Root then
 	return nil
 end
@@ -200,6 +212,7 @@ return CFrame.lookAt(
 		Target.Z + Direction.Z
 	)
 )
+ 
 
 end
 
@@ -213,6 +226,7 @@ if not Running then
 return
 end
 
+ 
 if not Settings.AutoFishing then
 	return
 end
@@ -265,6 +279,7 @@ task.spawn(function()
 		RunService.Heartbeat:Wait()
 	end
 end)
+ 
 
 end
 
@@ -275,6 +290,7 @@ end
 local function GetEnabledSkills()
 local Skills = {}
 
+ 
 for _, Skill in ipairs({"Z", "X", "C", "V"}) do
 	if Settings[Skill] then
 		table.insert(Skills, Skill)
@@ -282,10 +298,18 @@ for _, Skill in ipairs({"Z", "X", "C", "V"}) do
 end
 
 table.sort(Skills, function(A, B)
-	return (SkillOrder[A] or 1) < (SkillOrder[B] or 1)
+	local OrderA = tonumber(SkillOrder[A]) or 1
+	local OrderB = tonumber(SkillOrder[B]) or 1
+
+	if OrderA == OrderB then
+		return A < B
+	end
+
+	return OrderA < OrderB
 end)
 
 return Skills
+ 
 
 end
 
@@ -294,6 +318,7 @@ if not Running then
 return
 end
 
+ 
 if not Settings.AutoFishing then
 	return
 end
@@ -309,46 +334,42 @@ SkillLoopToken += 1
 local MyToken = SkillLoopToken
 
 task.spawn(function()
-	for _, Skill in ipairs(Skills) do
-		if not Running then
+	while Running
+		and Settings.AutoFishing
+		and MyToken == SkillLoopToken do
+
+		local CurrentSkills = GetEnabledSkills()
+
+		if #CurrentSkills == 0 then
 			return
 		end
 
-		if not Settings.AutoFishing then
-			return
+		for _, Skill in ipairs(CurrentSkills) do
+			if not Running then
+				return
+			end
+
+			if not Settings.AutoFishing then
+				return
+			end
+
+			if MyToken ~= SkillLoopToken then
+				return
+			end
+
+			if Settings[Skill] then
+				pcall(function()
+					UseSkill:FireServer(Skill)
+				end)
+
+				task.wait(0.1)
+			end
 		end
 
-		if not Settings[Skill] then
-			continue
-		end
-
-		if MyToken ~= SkillLoopToken then
-			return
-		end
-
-		pcall(function()
-			UseSkill:FireServer(Skill)
-		end)
-
-		task.wait(0.1)
-
-		while Running
-			and Settings.AutoFishing
-			and Settings[Skill]
-			and MyToken == SkillLoopToken do
-
-			pcall(function()
-				UseSkill:FireServer(Skill)
-			end)
-
-			task.wait(0.1)
-		end
-
-		if MyToken ~= SkillLoopToken then
-			return
-		end
+		task.wait(0.05)
 	end
 end)
+ 
 
 end
 
@@ -358,6 +379,7 @@ BarConnection:Disconnect()
 BarConnection = nil
 end
 
+ 
 local Bar
 
 pcall(function()
@@ -388,6 +410,7 @@ BarConnection = RunService.RenderStepped:Connect(function()
 		Bar.Position = FrozenPosition
 	end
 end)
+ 
 
 end
 
@@ -404,6 +427,7 @@ PlayerFreezeConnection:Disconnect()
 PlayerFreezeConnection = nil
 end
 
+ 
 local Root = GetRoot()
 
 if not Root then
@@ -429,6 +453,7 @@ PlayerFreezeConnection = RunService.Heartbeat:Connect(function()
 		CurrentRoot.AssemblyAngularVelocity = Vector3.zero
 	end
 end)
+ 
 
 end
 
@@ -444,6 +469,7 @@ if not Running then
 return nil, nil
 end
 
+ 
 local RodFolder
 
 local Success = pcall(function()
@@ -507,6 +533,7 @@ for _, Rod in ipairs(RodFolder:GetChildren()) do
 end
 
 return StrongestRod, StrongestPower
+ 
 
 end
 
@@ -515,6 +542,7 @@ if not Running or not Settings.StrongestRod then
 return
 end
 
+ 
 local StrongestRod = FindStrongestRod()
 
 if not StrongestRod then
@@ -549,6 +577,7 @@ task.spawn(function()
 		end
 	end
 end)
+ 
 
 end
 
@@ -558,6 +587,7 @@ task.cancel(RodThread)
 RodThread = nil
 end
 
+ 
 RodThread = task.spawn(function()
 	while Running and Settings.StrongestRod do
 		pcall(function()
@@ -574,6 +604,7 @@ RodThread = task.spawn(function()
 		end
 	end
 end)
+ 
 
 end
 
@@ -596,6 +627,7 @@ task.cancel(SellThread)
 SellThread = nil
 end
 
+ 
 SellThread = task.spawn(function()
 	while Running and Settings.AutoSell do
 		SellAll()
@@ -610,6 +642,7 @@ SellThread = task.spawn(function()
 		end
 	end
 end)
+ 
 
 end
 
@@ -623,6 +656,7 @@ end
 local function GetBaitAmount()
 local Amount
 
+ 
 pcall(function()
 	local Bait =
 		PlayerGui
@@ -649,10 +683,13 @@ pcall(function()
 		return
 	end
 
-	Amount = tonumber(Value.Text:match("%d+"))
+	Amount = tonumber(
+		Value.Text:match("%d+")
+	)
 end)
 
 return Amount
+ 
 
 end
 
@@ -661,6 +698,7 @@ if not Running then
 return
 end
 
+ 
 local Amount = GetBaitAmount()
 
 if not Amount then
@@ -675,6 +713,7 @@ if Amount < 90 then
 		)
 	end)
 end
+ 
 
 end
 
@@ -684,6 +723,7 @@ task.cancel(BaitThread)
 BaitThread = nil
 end
 
+ 
 BaitThread = task.spawn(function()
 	while Running and Settings.AutoBuyBait do
 		pcall(BuyBait)
@@ -698,6 +738,7 @@ BaitThread = task.spawn(function()
 		end
 	end
 end)
+ 
 
 end
 
@@ -711,6 +752,7 @@ end
 local function FindHardTicketQuest()
 local Quest
 
+ 
 pcall(function()
 	local MainQuest =
 		PlayerGui
@@ -727,6 +769,7 @@ pcall(function()
 end)
 
 return Quest
+ 
 
 end
 
@@ -735,6 +778,7 @@ if not Running or not Settings.AutoTicketQuest then
 return
 end
 
+ 
 if FindHardTicketQuest() then
 	return
 end
@@ -759,12 +803,14 @@ pcall(function()
 		}
 	)
 end)
+ 
 
 end
 
 local function GetHardQuestProgress()
 local HardQuest = FindHardTicketQuest()
 
+ 
 if not HardQuest then
 	return nil, nil
 end
@@ -800,6 +846,7 @@ for _, Object in ipairs(QuestFrame:GetDescendants()) do
 end
 
 return nil, nil
+ 
 
 end
 
@@ -808,6 +855,7 @@ if not Running or not Settings.AutoTicketQuest then
 return
 end
 
+ 
 if not FindHardTicketQuest() then
 	return
 end
@@ -842,6 +890,7 @@ pcall(function()
 		}
 	)
 end)
+ 
 
 end
 
@@ -851,6 +900,7 @@ QuestConnection:Disconnect()
 QuestConnection = nil
 end
 
+ 
 local LastCheck = 0
 
 QuestConnection =
@@ -872,6 +922,7 @@ QuestConnection =
 			pcall(AcceptHardTicketQuest)
 		end
 	end)
+ 
 
 end
 
@@ -888,6 +939,7 @@ if not Running then
 return
 end
 
+ 
 	local Args = {...}
 
 	if Args[1] == "SessionEnd" then
@@ -907,6 +959,7 @@ end
 		end
 	end
 end)
+ 
 
 ReadyConnection =
 ReadyTimeFX.OnClientEvent:Connect(function(...)
@@ -914,6 +967,7 @@ if not Running then
 return
 end
 
+ 
 	local Args = {...}
 
 	if Args[1] == "LOCK" then
@@ -922,6 +976,7 @@ end
 		end
 	end
 end)
+ 
 
 StartBarFreeze()
 
@@ -933,6 +988,7 @@ Icon = "solar:folder-2-bold-duotone",
 NewElements = true,
 HideSearchBar = false,
 
+ 
 OpenButton = {
 	Title = "Open Z'Nigga UI",
 	CornerRadius = UDim.new(1, 0),
@@ -952,6 +1008,7 @@ Topbar = {
 	Height = 44,
 	ButtonsType = "Mac",
 },
+ 
 
 })
 
@@ -990,6 +1047,7 @@ MainTab:Toggle({
 Title = "Auto Fishing",
 Default = false,
 
+ 
 Callback = function(Value)
 	Settings.AutoFishing = Value
 
@@ -1008,6 +1066,7 @@ Callback = function(Value)
 		end
 	end)
 end
+ 
 
 })
 
@@ -1015,6 +1074,7 @@ MainTab:Toggle({
 Title = "Auto Strongest Rod",
 Default = false,
 
+ 
 Callback = function(Value)
 	Settings.StrongestRod = Value
 
@@ -1024,6 +1084,7 @@ Callback = function(Value)
 		StopStrongestRod()
 	end
 end
+ 
 
 })
 
@@ -1031,6 +1092,7 @@ MainTab:Toggle({
 Title = "Auto Buy Bait",
 Default = false,
 
+ 
 Callback = function(Value)
 	Settings.AutoBuyBait = Value
 
@@ -1040,6 +1102,7 @@ Callback = function(Value)
 		StopAutoBuyBait()
 	end
 end
+ 
 
 })
 
@@ -1047,9 +1110,11 @@ MainTab:Toggle({
 Title = "Bar Freeze",
 Default = false,
 
+ 
 Callback = function(Value)
 	Settings.BarFreeze = Value
 end
+ 
 
 })
 
@@ -1057,6 +1122,7 @@ MainTab:Toggle({
 Title = "Freeze Player",
 Default = false,
 
+ 
 Callback = function(Value)
 	Settings.PlayerFreeze = Value
 
@@ -1066,6 +1132,7 @@ Callback = function(Value)
 		StopPlayerFreeze()
 	end
 end
+ 
 
 })
 
@@ -1078,6 +1145,7 @@ MainTab:Toggle({
 Title = "Auto Skill " .. Skill,
 Default = false,
 
+ 
 	Callback = function(Value)
 		Settings[Skill] = Value
 
@@ -1103,6 +1171,7 @@ MainTab:Slider({
 			or SkillOrder[Skill]
 	end
 })
+ 
 
 end
 
@@ -1119,6 +1188,7 @@ SellTab:Toggle({
 Title = "Auto Sell",
 Default = false,
 
+ 
 Callback = function(Value)
 	Settings.AutoSell = Value
 
@@ -1128,15 +1198,18 @@ Callback = function(Value)
 		StopAutoSell()
 	end
 end
+ 
 
 })
 
 SellTab:Button({
 Title = "Sell All",
 
+ 
 Callback = function()
 	SellAll()
 end
+ 
 
 })
 
@@ -1147,6 +1220,7 @@ Title = "Shop"
 ShopTab:Button({
 Title = "Trait Reroll",
 
+ 
 Callback = function()
 	pcall(function()
 		firesignal(
@@ -1155,12 +1229,14 @@ Callback = function()
 		)
 	end)
 end
+ 
 
 })
 
 ShopTab:Button({
 Title = "Bait Shop",
 
+ 
 Callback = function()
 	pcall(function()
 		ChooseDialogueOption:FireServer(
@@ -1171,6 +1247,7 @@ Callback = function()
 		)
 	end)
 end
+ 
 
 })
 
@@ -1182,6 +1259,7 @@ OtherTab:Toggle({
 Title = "Auto Hard Ticket Quest",
 Default = false,
 
+ 
 Callback = function(Value)
 	Settings.AutoTicketQuest = Value
 
@@ -1191,6 +1269,7 @@ Callback = function(Value)
 		StopTicketQuest()
 	end
 end
+ 
 
 })
 
@@ -1199,6 +1278,7 @@ if not Running then
 return
 end
 
+ 
 Running = false
 
 Settings.AutoFishing = false
@@ -1223,11 +1303,6 @@ StopAutoSell()
 StopAutoBuyBait()
 StopTicketQuest()
 
-if FishingConnection then
-	FishingConnection:Disconnect()
-	FishingConnection = nil
-end
-
 if ReadyConnection then
 	ReadyConnection:Disconnect()
 	ReadyConnection = nil
@@ -1237,5 +1312,6 @@ if MinigameConnection then
 	MinigameConnection:Disconnect()
 	MinigameConnection = nil
 end
+
 
 end
