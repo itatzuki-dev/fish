@@ -1,13 +1,638 @@
---// FAKE PERMANENT BAN - CLIENT SIDE
+--// WindUI - Main có toggle Freeze bar
+--// Freeze bar giữ Bar ở Position = UDim2.new(0.5, 0, 0.5, 0).
 
 local Players = game:GetService("Players")
-local player = Players.LocalPlayer
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local ReplicatedStorageService = ReplicatedStorage
 
-task.wait(3)
+local cloneref = cloneref or clonereference or function(instance)
+    return instance
+end
 
-player:Kick(
-    "PERMANENTLY BANNED\n\n" ..
-    "You have been permanently banned from this experience.\n\n" ..
-    "Reason: Cheating" ..
-    "Ban Type: Permanent"
-)
+ReplicatedStorage = cloneref(ReplicatedStorage)
+
+local WindUI
+
+do
+    local ok, result = pcall(function()
+        return require("./src/Init")
+    end)
+
+    if ok then
+        WindUI = result
+    elseif RunService:IsStudio() then
+        WindUI = require(
+            ReplicatedStorage:WaitForChild("WindUI"):WaitForChild("Init")
+        )
+    else
+        WindUI = loadstring(
+            game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua")
+        )()
+    end
+end
+
+local Window = WindUI:CreateWindow({
+    Title = "Phúc Cặc Khủng",
+    Author = "by Phúc",
+    Folder = "Znigga",
+    Icon = "solar:folder-2-bold-duotone",
+    NewElements = false,
+    HideSearchBar = false,
+
+    OpenButton = {
+        Title = "---Mở Menu---",
+        CornerRadius = UDim.new(1, 0),
+        StrokeThickness = 3,
+        Enabled = true,
+        Draggable = true,
+        OnlyMobile = false,
+        Scale = 1,
+
+        Color = ColorSequence.new(
+            Color3.fromHex("#30FF6A"),
+            Color3.fromHex("#e7ff2f")
+        ),
+    },
+
+    Topbar = {
+        Height = 44,
+        ButtonsType = "Mac",
+    },
+})
+
+Window:Tag({
+    Title = "Yêu bé Tài",
+    Icon = "github",
+    Color = Color3.fromHex("#1c1c1c"),
+    Border = true,
+})
+
+local MainTab = Window:Tab({
+    Title = "Main",
+    Icon = "house",
+})
+
+local SellTab = Window:Tab({
+    Title = "Sell",
+    Icon = "shopping-cart",
+})
+
+local ShopTab = Window:Tab({
+    Title = "Shop",
+    Icon = "store",
+})
+
+local OtherTab = Window:Tab({
+    Title = "Other",
+    Icon = "settings",
+})
+
+--// SHOP BUTTONS - mở các frame tương ứng trong MainGui.Menu
+local LocalPlayer = Players.LocalPlayer
+
+local ShopMenuSection = ShopTab:Section({
+    Title = "Shop & Craft",
+})
+
+local function SetMenuFrameVisible(frameName, buttonTitle)
+    local success, err = pcall(function()
+        local playerGui = LocalPlayer:WaitForChild("PlayerGui", 10)
+        assert(playerGui, "Không tìm thấy PlayerGui")
+        local mainGui = playerGui:WaitForChild("MainGui", 10)
+        assert(mainGui, "Không tìm thấy MainGui")
+        local menu = mainGui:WaitForChild("Menu", 10)
+        assert(menu, "Không tìm thấy Menu")
+        local targetFrame = menu:WaitForChild(frameName, 10)
+        assert(targetFrame, "Không tìm thấy Menu." .. frameName)
+        assert(targetFrame:IsA("GuiObject"), "Menu." .. frameName .. " không phải GuiObject")
+        targetFrame.Visible = true
+    end)
+
+    if not success then
+        warn("[Shop] Không thể mở " .. buttonTitle .. ":", err)
+    end
+end
+
+ShopMenuSection:Button({
+    Title = "Skill shop",
+    Callback = function()
+        SetMenuFrameVisible("LearnSkill", "Skill shop")
+    end,
+})
+
+ShopMenuSection:Button({
+    Title = "Trait reroll",
+    Callback = function()
+        SetMenuFrameVisible("Trait", "Trait reroll")
+    end,
+})
+
+ShopMenuSection:Button({
+    Title = "Craft bait",
+    Callback = function()
+        SetMenuFrameVisible("CraftBait", "Craft bait")
+    end,
+})
+
+ShopMenuSection:Button({
+    Title = "Craft rod",
+    Callback = function()
+        SetMenuFrameVisible("CraftRod", "Craft rod")
+    end,
+})
+
+local TargetPosition = UDim2.new(0.5, 0, 0.5, 0)
+
+local FreezeEnabled = false
+local PositionConnection = nil
+local BarFrame = nil
+local UpdatingPosition = false
+
+local function GetBar()
+    local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not PlayerGui then
+        return nil
+    end
+
+    local MainGui = PlayerGui:FindFirstChild("MainGui")
+    if not MainGui then
+        return nil
+    end
+
+    local Fishing = MainGui:FindFirstChild("Fishing")
+    if not Fishing then
+        return nil
+    end
+
+    local BarContainer = Fishing:FindFirstChild("BarFrame")
+    if not BarContainer then
+        return nil
+    end
+
+    return BarContainer:FindFirstChild("Bar")
+end
+
+local function StopFreeze()
+    FreezeEnabled = false
+
+    if PositionConnection then
+        PositionConnection:Disconnect()
+        PositionConnection = nil
+    end
+end
+
+local function StartFreeze()
+    local bar = GetBar()
+    if not bar or not bar:IsA("GuiObject") then
+        warn("[Freeze bar] Không tìm thấy PlayerGui.MainGui.Fishing.BarFrame.Bar")
+        return false
+    end
+
+    if PositionConnection then
+        PositionConnection:Disconnect()
+        PositionConnection = nil
+    end
+
+    BarFrame = bar
+    FreezeEnabled = true
+    UpdatingPosition = true
+    BarFrame.Position = TargetPosition
+    UpdatingPosition = false
+
+    PositionConnection = BarFrame:GetPropertyChangedSignal("Position"):Connect(function()
+        if not FreezeEnabled or not BarFrame or not BarFrame.Parent then
+            return
+        end
+
+        if UpdatingPosition then
+            return
+        end
+
+        if BarFrame.Position ~= TargetPosition then
+            UpdatingPosition = true
+            BarFrame.Position = TargetPosition
+            UpdatingPosition = false
+        end
+    end)
+
+    return true
+end
+
+
+
+--// SELL FISH - các control nằm trực tiếp trong tab Sell như bình thường
+local SellFishEvent = ReplicatedStorage:WaitForChild("Events"):WaitForChild("SellFish")
+local AutoSellEnabled = false
+local AutoSellTaskId = 0
+
+SellTab:Toggle({
+    Title = "Auto bán tất cả",
+    Value = false,
+    Callback = function(value)
+        AutoSellEnabled = value
+        AutoSellTaskId += 1
+        local thisTaskId = AutoSellTaskId
+
+        if value then
+            task.spawn(function()
+                while AutoSellEnabled and AutoSellTaskId == thisTaskId do
+                    local success, err = pcall(function()
+                        SellFishEvent:FireServer("All")
+                    end)
+
+                    if not success then
+                        warn("[Auto bán tất cả] FireServer lỗi:", err)
+                        break
+                    end
+
+                    task.wait(0.25)
+                end
+            end)
+        end
+    end,
+})
+
+SellTab:Button({
+    Title = "Sell tất cả",
+    Callback = function()
+        local success, err = pcall(function()
+            SellFishEvent:FireServer("All")
+        end)
+
+        if not success then
+            warn("[Sell tất cả] FireServer lỗi:", err)
+        end
+    end,
+})
+
+--// AUTO CÂU
+local AutoFishEnabled = false
+local AutoFishTaskId = 0
+local AutoFishInterval = 0.1
+-- Chỉ phát lệnh Fishing một lần mỗi phiên; SessionEnd mở khóa lần câu kế tiếp.
+local AutoFishCanCast = true
+local LastHotbarToggleAt = 0
+local HotbarToggleCooldown = 0.75
+local EventsFolder = ReplicatedStorage:WaitForChild("Events")
+local ToggleHotbarEvent = EventsFolder:WaitForChild("ToggleHotbar")
+local FishingEvent = EventsFolder:WaitForChild("Fishing")
+local FishingMinigameEvent = EventsFolder:WaitForChild("FishingMinigame")
+local ReadyTimeFXEvent = EventsFolder:WaitForChild("ReadyTimeFX")
+
+-- Tìm Model tên Tool cả trong descendants của Character.
+local function HasToolModel(character)
+    if not character then
+        return false
+    end
+
+    for _, descendant in ipairs(character:GetDescendants()) do
+        if descendant:IsA("Model") and descendant.Name == "Tool" then
+            return true
+        end
+    end
+    return false
+end
+
+local function StopAutoFish(reason)
+    local wasEnabled = AutoFishEnabled
+    AutoFishEnabled = false
+    AutoFishTaskId += 1
+
+    if wasEnabled then
+        local unequipOk, unequipErr = pcall(function()
+            FishingMinigameEvent:FireServer(false, "", "Unequip")
+        end)
+        if not unequipOk then
+            warn("[Auto câu] Unequip lỗi:", unequipErr)
+        end
+        print("[Auto câu] Đã dừng:", reason or "không rõ lý do")
+    end
+end
+
+-- Auto chiêu tạm nghỉ khi SessionEnd và tự chạy lại khi nhận LOCK tiếp theo.
+local AutoSkillEnabled = false
+local SkillSequence = ""
+local SkillSequenceVersion = 0
+local AutoSkillTaskId = 0
+local UseSkillEvent = EventsFolder:WaitForChild("UseSkill")
+local SkillLoopArmed = false
+local SkillForceNext = false
+-- Tăng sau mỗi SessionEnd để vòng Auto chiêu reset về chữ đầu tiên.
+local SkillSequenceResetVersion = 0
+
+-- Sau LOCK, đợi đủ 1 giây rồi mới cho phép Auto chiêu chạy.
+local SkillStartAfter = 0
+local ReadyTimeFXConnection = ReadyTimeFXEvent.OnClientEvent:Connect(function(state)
+    if state == "LOCK" then
+        SkillLoopArmed = true
+        SkillForceNext = true
+        SkillStartAfter = os.clock() + 1
+        print("[Auto chiêu] Đã nhận LOCK; sẽ bắt đầu sau 1 giây")
+    end
+end)
+
+local function StopAutoSkill(reason)
+    if AutoSkillEnabled then
+        AutoSkillEnabled = false
+        AutoSkillTaskId += 1
+        print("[Auto chiêu] Đã dừng:", reason or "không rõ lý do")
+    end
+end
+
+local FishingMinigameConnection = FishingMinigameEvent.OnClientEvent:Connect(function(state, success)
+    if state == "SessionEnd" then
+        -- Chỉ cho phép Auto câu phát lệnh câu tiếp sau khi phiên hiện tại kết thúc.
+        AutoFishCanCast = true
+
+        -- Auto chiêu tạm nghỉ đến khi nhận LOCK kế tiếp.
+        SkillLoopArmed = false
+        SkillForceNext = false
+        SkillSequenceResetVersion += 1
+        print("[Auto câu] SessionEnd nhận được; sẵn sàng bắt đầu phiên câu tiếp theo")
+        print("[Auto chiêu] Tạm nghỉ, chờ LOCK tiếp theo")
+    end
+    -- Bỏ qua Out of bar và Dead theo yêu cầu.
+end)
+
+local AutoFishSection = MainTab:Section({
+    Title = "Fishing",
+})
+
+AutoFishSection:Toggle({
+    Title = "Freeze bar",
+    Value = false,
+    Callback = function(value)
+        if value then
+            local success = StartFreeze()
+            if not success then
+                StopFreeze()
+            end
+        else
+            StopFreeze()
+        end
+    end,
+})
+
+AutoFishSection:Toggle({
+    Title = "Auto câu",
+    Value = false,
+    Callback = function(value)
+        AutoFishEnabled = value
+        AutoFishTaskId += 1
+        local thisTaskId = AutoFishTaskId
+
+        if not value then
+            StopAutoFish("người dùng tắt toggle")
+            print("[Auto câu] Đã tắt")
+            return
+        end
+
+        -- Bật Auto câu thì cho phép bắt đầu phiên đầu tiên.
+        AutoFishCanCast = true
+        print("[Auto câu] Đã bật")
+        task.spawn(function()
+            while AutoFishEnabled and AutoFishTaskId == thisTaskId do
+                local character = LocalPlayer.Character
+                local root = character and character:FindFirstChild("HumanoidRootPart")
+                local hasToolModel = character and character.Parent and HasToolModel(character)
+
+                if character and character.Parent and root then
+                    -- Kiểm tra Tool kể cả khi đang chờ SessionEnd. Nếu mất model, thử hotbar
+                    -- theo nhịp giới hạn, đồng thời cho phép bắt đầu lại sau khi trang bị.
+                    if not hasToolModel then
+                        -- Chưa có model Tool: yêu cầu trang bị lại, rồi để vòng sau kiểm tra lại.
+                        AutoFishCanCast = true
+                        if os.clock() - LastHotbarToggleAt >= HotbarToggleCooldown then
+                            LastHotbarToggleAt = os.clock()
+                            local toggleOk, toggleErr = pcall(function()
+                                ToggleHotbarEvent:InvokeServer("1", nil)
+                            end)
+                            if not toggleOk then
+                                warn("[Auto câu] ToggleHotbar lỗi:", toggleErr)
+                            else
+                                task.wait(0.2)
+                                -- Kiểm tra lại Character mới sau khi InvokeServer có thể đã yield.
+                                character = LocalPlayer.Character
+                                root = character and character:FindFirstChild("HumanoidRootPart")
+                                hasToolModel = character and character.Parent and HasToolModel(character)
+                            end
+                        end
+                    end
+
+                    -- Khi phát lệnh câu, tiếp tục FireServer cho đến khi Attribute Fishing
+                    -- trên Character chuyển thành true. SessionEnd sẽ ngắt vòng retry và mở lượt mới.
+                    if character and character.Parent and root and hasToolModel and AutoFishCanCast then
+                        AutoFishCanCast = false
+                        while AutoFishEnabled and AutoFishTaskId == thisTaskId and not AutoFishCanCast do
+                            character = LocalPlayer.Character
+                            root = character and character:FindFirstChild("HumanoidRootPart")
+                            if not character or not character.Parent or not root then
+                                task.wait(AutoFishInterval)
+                                continue
+                            end
+
+                            local fishingCFrame = root.CFrame * CFrame.new(0, 0, -10)
+                            local fishingOk, fishingErr = pcall(function()
+                                FishingEvent:FireServer(fishingCFrame)
+                            end)
+                            if not fishingOk then
+                                warn("[Auto câu] Fishing lỗi, sẽ thử lại:", fishingErr)
+                            end
+
+                            -- Chờ server cập nhật Attribute sau mỗi lần FireServer.
+                            task.wait(0.1)
+                            character = LocalPlayer.Character
+                            if character and character.Parent and character:GetAttribute("Fishing") == true then
+                                break
+                            end
+                        end
+                    end
+                end
+
+                task.wait(AutoFishInterval)
+            end
+        end)
+    end,
+})
+
+AutoFishSection:Input({
+    Title = "Chiêu",
+    Placeholder = "Ví dụ: zxcv / z, x, c, v / V-X-C-Z",
+    Callback = function(value)
+        -- Chấp nhận chữ thường/hoa, viết liền hoặc ngăn cách bằng dấu.
+        -- Loại bỏ mọi ký tự ngoài z, x, c, v và giữ đúng thứ tự người chơi nhập.
+        local filtered = string.lower(tostring(value or "")):gsub("[^zxcv]", "")
+        SkillSequence = filtered:sub(1, 4)
+        SkillSequenceVersion += 1
+        print("[Auto chiêu] Thứ tự chiêu:", SkillSequence)
+    end,
+})
+
+AutoFishSection:Toggle({
+    Title = "Auto chiêu",
+    Value = false,
+    Callback = function(value)
+        AutoSkillTaskId += 1
+        local thisTaskId = AutoSkillTaskId
+        AutoSkillEnabled = value
+
+        if not value then
+            print("[Auto chiêu] Đã tắt")
+            return
+        end
+
+        if SkillSequence == "" then
+            AutoSkillEnabled = false
+            warn("[Auto chiêu] Hãy nhập ít nhất một chữ trong z, x, c, v trước khi bật.")
+            return
+        end
+
+        task.spawn(function()
+            local sequenceIndex = 1
+            local activeSequenceVersion = SkillSequenceVersion
+            local activeResetVersion = SkillSequenceResetVersion
+            while AutoSkillEnabled and AutoSkillTaskId == thisTaskId do
+                if activeResetVersion ~= SkillSequenceResetVersion then
+                    activeResetVersion = SkillSequenceResetVersion
+                    sequenceIndex = 1
+                    print("[Auto chiêu] SessionEnd: reset chuỗi về chữ đầu tiên")
+                end
+                if not SkillLoopArmed or os.clock() < SkillStartAfter then
+                    task.wait(0.05)
+                    continue
+                end
+
+                -- Nếu người chơi sửa chuỗi khi đang chạy, bắt đầu lại từ chữ đầu tiên.
+                if activeSequenceVersion ~= SkillSequenceVersion then
+                    activeSequenceVersion = SkillSequenceVersion
+                    sequenceIndex = 1
+                end
+
+                local character = LocalPlayer.Character
+                if not character or not character.Parent then
+                    task.wait(0.1)
+                    continue
+                end
+
+                -- LOCK cho phép thử dùng ngay một chiêu kể cả khi SkillLocked chưa cập nhật;
+                -- các chiêu kế tiếp vẫn chờ trạng thái khóa được nhả.
+                local locked = character:GetAttribute("SkillLocked")
+                if locked ~= true or SkillForceNext then
+                    SkillForceNext = false
+                    local letter = SkillSequence:sub(sequenceIndex, sequenceIndex)
+                    if letter == "" then
+                        sequenceIndex = 1
+                        letter = SkillSequence:sub(sequenceIndex, sequenceIndex)
+                    end
+
+                    if letter ~= "" then
+                        -- Mỗi lần FireServer chỉ gửi đúng một chữ, ví dụ "Z".
+                        local singleSkill = string.upper(letter)
+                        local ok, err = pcall(function()
+                            UseSkillEvent:FireServer(singleSkill)
+                        end)
+
+                        if ok then
+                            sequenceIndex += 1
+                            if sequenceIndex > #SkillSequence then
+                                sequenceIndex = 1
+                            end
+                            -- Chờ SkillLocked chuyển true rồi trở về false. Có timeout để vòng lặp
+                            -- không bị kẹt vĩnh viễn nếu game không replicate attribute này.
+                            local sawLocked = false
+                            local waitStartedAt = os.clock()
+                            while AutoSkillEnabled and AutoSkillTaskId == thisTaskId do
+                                task.wait(0.05)
+                                character = LocalPlayer.Character
+                                if not character or not character.Parent then
+                                    break
+                                end
+
+                                local currentLocked = character:GetAttribute("SkillLocked")
+                                if currentLocked == true then
+                                    sawLocked = true
+                                elseif sawLocked and currentLocked ~= true then
+                                    break
+                                elseif not sawLocked and os.clock() - waitStartedAt >= 2 then
+                                    -- Không thấy chu kỳ khóa: tránh treo Auto chiêu mãi mãi.
+                                    break
+                                end
+                            end
+                            if not sawLocked then
+                                task.wait(0.2)
+                            end
+                        else
+                            warn("[Auto chiêu] UseSkill lỗi:", err)
+                            task.wait(0.2)
+                        end
+                    end
+                else
+                    task.wait(0.05)
+                end
+            end
+        end)
+    end,
+})
+
+--// MINIGAME - Enzo & Long DiaoHai
+local MinigameSection = MainTab:Section({
+    Title = "Minigame",
+})
+
+local MinigameEnabled = false
+local TEST_INTERVAL = 0.05 -- tối đa khoảng 20 lần/giây; tránh spam RemoteEvent quá mức
+local lastFireTime = 0
+local testIndex = 1
+local ActionEvent = ReplicatedStorage:WaitForChild("Events"):WaitForChild("BossPhase2Action")
+
+MinigameSection:Toggle({
+    Title = "Minigame Enzo & Long DiaoHai",
+    Value = false,
+    Callback = function(value)
+        MinigameEnabled = value
+        if value then
+            print("[BossPhase2Test] Minigame enabled")
+        else
+            print("[BossPhase2Test] Minigame disabled")
+        end
+    end,
+})
+
+RunService.RenderStepped:Connect(function()
+    if not MinigameEnabled then
+        return
+    end
+
+    local Character = LocalPlayer.Character
+    if not Character or Character.Parent == nil then
+        return
+    end
+
+    if Character:GetAttribute("Phase2") ~= true then
+        return
+    end
+
+    local now = os.clock()
+    if now - lastFireTime < TEST_INTERVAL then
+        return
+    end
+
+    lastFireTime = now
+
+    local payload = {
+        Hit = true,
+        Index = testIndex,
+    }
+
+    local success, err = pcall(function()
+        ActionEvent:FireServer(payload)
+    end)
+
+    if success then
+        print("[BossPhase2Test] Sent:", payload.Hit, payload.Index)
+        testIndex += 1
+    else
+        warn("[BossPhase2Test] Failed:", err)
+    end
+end)
