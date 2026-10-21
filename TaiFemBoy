@@ -136,6 +136,13 @@ ShopMenuSection:Button({
 })
 
 ShopMenuSection:Button({
+    Title = "Shop bait",
+    Callback = function()
+        SetMenuFrameVisible("BaitShop", "Shop bait")
+    end,
+})
+
+ShopMenuSection:Button({
     Title = "Craft rod",
     Callback = function()
         SetMenuFrameVisible("CraftRod", "Craft rod")
@@ -269,30 +276,10 @@ SellTab:Button({
 --// AUTO CÂU
 local AutoFishEnabled = false
 local AutoFishTaskId = 0
-local AutoFishInterval = 0.1
--- Chỉ phát lệnh Fishing một lần mỗi phiên; SessionEnd mở khóa lần câu kế tiếp.
-local AutoFishCanCast = true
-local LastHotbarToggleAt = 0
-local HotbarToggleCooldown = 0.75
+local AutoFishInterval = 1
 local EventsFolder = ReplicatedStorage:WaitForChild("Events")
-local ToggleHotbarEvent = EventsFolder:WaitForChild("ToggleHotbar")
 local FishingEvent = EventsFolder:WaitForChild("Fishing")
 local FishingMinigameEvent = EventsFolder:WaitForChild("FishingMinigame")
-local ReadyTimeFXEvent = EventsFolder:WaitForChild("ReadyTimeFX")
-
--- Tìm Model tên Tool cả trong descendants của Character.
-local function HasToolModel(character)
-    if not character then
-        return false
-    end
-
-    for _, descendant in ipairs(character:GetDescendants()) do
-        if descendant:IsA("Model") and descendant.Name == "Tool" then
-            return true
-        end
-    end
-    return false
-end
 
 local function StopAutoFish(reason)
     local wasEnabled = AutoFishEnabled
@@ -300,13 +287,9 @@ local function StopAutoFish(reason)
     AutoFishTaskId += 1
 
     if wasEnabled then
-        local unequipOk, unequipErr = pcall(function()
+        pcall(function()
             FishingMinigameEvent:FireServer(false, "", "Unequip")
         end)
-        if not unequipOk then
-            warn("[Auto câu] Unequip lỗi:", unequipErr)
-        end
-        print("[Auto câu] Đã dừng:", reason or "không rõ lý do")
     end
 end
 
@@ -318,17 +301,14 @@ local AutoSkillTaskId = 0
 local UseSkillEvent = EventsFolder:WaitForChild("UseSkill")
 local SkillLoopArmed = false
 local SkillForceNext = false
--- Tăng sau mỗi SessionEnd để vòng Auto chiêu reset về chữ đầu tiên.
 local SkillSequenceResetVersion = 0
-
--- Sau LOCK, đợi đủ 1 giây rồi mới cho phép Auto chiêu chạy.
 local SkillStartAfter = 0
+local ReadyTimeFXEvent = EventsFolder:WaitForChild("ReadyTimeFX")
 local ReadyTimeFXConnection = ReadyTimeFXEvent.OnClientEvent:Connect(function(state)
     if state == "LOCK" then
         SkillLoopArmed = true
         SkillForceNext = true
         SkillStartAfter = os.clock() + 1
-        print("[Auto chiêu] Đã nhận LOCK; sẽ bắt đầu sau 1 giây")
     end
 end)
 
@@ -336,23 +316,15 @@ local function StopAutoSkill(reason)
     if AutoSkillEnabled then
         AutoSkillEnabled = false
         AutoSkillTaskId += 1
-        print("[Auto chiêu] Đã dừng:", reason or "không rõ lý do")
     end
 end
 
 local FishingMinigameConnection = FishingMinigameEvent.OnClientEvent:Connect(function(state, success)
     if state == "SessionEnd" then
-        -- Chỉ cho phép Auto câu phát lệnh câu tiếp sau khi phiên hiện tại kết thúc.
-        AutoFishCanCast = true
-
-        -- Auto chiêu tạm nghỉ đến khi nhận LOCK kế tiếp.
         SkillLoopArmed = false
         SkillForceNext = false
         SkillSequenceResetVersion += 1
-        print("[Auto câu] SessionEnd nhận được; sẵn sàng bắt đầu phiên câu tiếp theo")
-        print("[Auto chiêu] Tạm nghỉ, chờ LOCK tiếp theo")
     end
-    -- Bỏ qua Out of bar và Dead theo yêu cầu.
 end)
 
 local AutoFishSection = MainTab:Section({
@@ -384,72 +356,22 @@ AutoFishSection:Toggle({
 
         if not value then
             StopAutoFish("người dùng tắt toggle")
-            print("[Auto câu] Đã tắt")
             return
         end
 
-        -- Bật Auto câu thì cho phép bắt đầu phiên đầu tiên.
-        AutoFishCanCast = true
-        print("[Auto câu] Đã bật")
         task.spawn(function()
             while AutoFishEnabled and AutoFishTaskId == thisTaskId do
                 local character = LocalPlayer.Character
                 local root = character and character:FindFirstChild("HumanoidRootPart")
-                local hasToolModel = character and character.Parent and HasToolModel(character)
 
-                if character and character.Parent and root then
-                    -- Kiểm tra Tool kể cả khi đang chờ SessionEnd. Nếu mất model, thử hotbar
-                    -- theo nhịp giới hạn, đồng thời cho phép bắt đầu lại sau khi trang bị.
-                    if not hasToolModel then
-                        -- Chưa có model Tool: yêu cầu trang bị lại, rồi để vòng sau kiểm tra lại.
-                        AutoFishCanCast = true
-                        if os.clock() - LastHotbarToggleAt >= HotbarToggleCooldown then
-                            LastHotbarToggleAt = os.clock()
-                            local toggleOk, toggleErr = pcall(function()
-                                ToggleHotbarEvent:InvokeServer("1", nil)
-                            end)
-                            if not toggleOk then
-                                warn("[Auto câu] ToggleHotbar lỗi:", toggleErr)
-                            else
-                                task.wait(0.2)
-                                -- Kiểm tra lại Character mới sau khi InvokeServer có thể đã yield.
-                                character = LocalPlayer.Character
-                                root = character and character:FindFirstChild("HumanoidRootPart")
-                                hasToolModel = character and character.Parent and HasToolModel(character)
-                            end
-                        end
-                    end
-
-                    -- Khi phát lệnh câu, tiếp tục FireServer cho đến khi Attribute Fishing
-                    -- trên Character chuyển thành true. SessionEnd sẽ ngắt vòng retry và mở lượt mới.
-                    if character and character.Parent and root and hasToolModel and AutoFishCanCast then
-                        AutoFishCanCast = false
-                        while AutoFishEnabled and AutoFishTaskId == thisTaskId and not AutoFishCanCast do
-                            character = LocalPlayer.Character
-                            root = character and character:FindFirstChild("HumanoidRootPart")
-                            if not character or not character.Parent or not root then
-                                task.wait(AutoFishInterval)
-                                continue
-                            end
-
-                            local fishingCFrame = root.CFrame * CFrame.new(0, 0, -10)
-                            local fishingOk, fishingErr = pcall(function()
-                                FishingEvent:FireServer(fishingCFrame)
-                            end)
-                            if not fishingOk then
-                                warn("[Auto câu] Fishing lỗi, sẽ thử lại:", fishingErr)
-                            end
-
-                            -- Chờ server cập nhật Attribute sau mỗi lần FireServer.
-                            task.wait(0.1)
-                            character = LocalPlayer.Character
-                            if character and character.Parent and character:GetAttribute("Fishing") == true then
-                                break
-                            end
-                        end
-                    end
+                if root and character:GetAttribute("Fishing") ~= true then
+                    pcall(function()
+                        FishingEvent:FireServer(root.CFrame * CFrame.new(0, 0, -10))
+                    end)
                 end
 
+                -- Khi Attribute Fishing bật (true), tạm dừng gửi event.
+                -- Vòng lặp tự tiếp tục gửi khi Attribute trở về false hoặc nil.
                 task.wait(AutoFishInterval)
             end
         end)
@@ -465,7 +387,6 @@ AutoFishSection:Input({
         local filtered = string.lower(tostring(value or "")):gsub("[^zxcv]", "")
         SkillSequence = filtered:sub(1, 4)
         SkillSequenceVersion += 1
-        print("[Auto chiêu] Thứ tự chiêu:", SkillSequence)
     end,
 })
 
@@ -478,7 +399,6 @@ AutoFishSection:Toggle({
         AutoSkillEnabled = value
 
         if not value then
-            print("[Auto chiêu] Đã tắt")
             return
         end
 
@@ -496,7 +416,6 @@ AutoFishSection:Toggle({
                 if activeResetVersion ~= SkillSequenceResetVersion then
                     activeResetVersion = SkillSequenceResetVersion
                     sequenceIndex = 1
-                    print("[Auto chiêu] SessionEnd: reset chuỗi về chữ đầu tiên")
                 end
                 if not SkillLoopArmed or os.clock() < SkillStartAfter then
                     task.wait(0.05)
@@ -568,7 +487,6 @@ AutoFishSection:Toggle({
                                     end
                                 end
                             else
-                                print("[Auto chiêu] SkillLocked không chuyển true; chuyển sang chiêu tiếp theo")
                             end
                         else
                             warn("[Auto chiêu] UseSkill lỗi:", err)
@@ -584,6 +502,196 @@ AutoFishSection:Toggle({
 })
 
 
+local AutoBuyBaitEnabled = false
+local AutoBuyBaitTaskId = 0
+
+AutoFishSection:Toggle({
+    Title = "Auto mua bait",
+    Value = false,
+    Callback = function(value)
+        AutoBuyBaitEnabled = value
+        AutoBuyBaitTaskId += 1
+        local thisTaskId = AutoBuyBaitTaskId
+
+        if not value then
+            return
+        end
+
+        task.spawn(function()
+            local BuyBaitEvent = EventsFolder:WaitForChild("BuyBait")
+            while AutoBuyBaitEnabled and AutoBuyBaitTaskId == thisTaskId do
+                task.wait(30)
+                if not AutoBuyBaitEnabled or AutoBuyBaitTaskId ~= thisTaskId then
+                    break
+                end
+
+                local success, err = pcall(function()
+                    BuyBaitEvent:FireServer("Ancestral Bait", 500)
+                end)
+                if not success then
+                    warn("[Auto mua bait] Lỗi:", err)
+                end
+            end
+        end)
+    end,
+})
+
+
+
+--// NHIỆM VỤ
+local QuestSection = MainTab:Section({
+    Title = "Nhiệm vụ",
+})
+
+local ChooseDialogueOptionEvent = EventsFolder:WaitForChild("ChooseDialogueOption")
+
+local function HideDialogueFrame()
+    pcall(function()
+        local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+        local mainGui = playerGui and playerGui:FindFirstChild("MainGui")
+        local menu = mainGui and mainGui:FindFirstChild("Menu")
+        local dialogue = menu and menu:FindFirstChild("Dialogue")
+        if dialogue then
+            dialogue.Visible = false
+        end
+    end)
+end
+local AutoHardQuestEnabled = false
+local AutoHardQuestTaskId = 0
+local AutoTurnInQuestEnabled = false
+local AutoTurnInQuestTaskId = 0
+local DialogueSuppressTaskId = 0
+local QUEST_SCAN_INTERVAL = 3
+
+-- Ẩn Dialogue liên tục khi một trong hai toggle nhiệm vụ đang bật.
+-- Điều này xử lý cả trường hợp giao diện xuất hiện trễ sau FireServer.
+local function StartDialogueSuppressor()
+    DialogueSuppressTaskId += 1
+    local thisSuppressTaskId = DialogueSuppressTaskId
+    task.spawn(function()
+        while DialogueSuppressTaskId == thisSuppressTaskId
+            and (AutoHardQuestEnabled or AutoTurnInQuestEnabled) do
+            HideDialogueFrame()
+            task.wait(0.05)
+        end
+        HideDialogueFrame()
+    end)
+end
+
+local function GetHardQuestFrame()
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    local mainGui = playerGui and playerGui:FindFirstChild("MainGui")
+    local menu = mainGui and mainGui:FindFirstChild("Menu")
+    local questMenu = menu and menu:FindFirstChild("Quest")
+    local questRoot = questMenu and questMenu:FindFirstChild("Menu")
+    local mainQuest = questRoot and questRoot:FindFirstChild("Main_Quest")
+    if not mainQuest then
+        return nil
+    end
+    return mainQuest, mainQuest:FindFirstChild("Hard Ticket Quest")
+end
+
+local function FireHardQuestDialogue()
+    local success, err = pcall(function()
+        local npcFunction = workspace:WaitForChild("NPC")
+            :WaitForChild("Function")
+            :WaitForChild("Ticket Quest Giver")
+
+        ChooseDialogueOptionEvent:FireServer(
+            "Ticket Quest Giver",
+            2,
+            "HardAcceptQuest",
+            {
+                npcFunction,
+                "Ticket Quest"
+            }
+        )
+        HideDialogueFrame()
+    end)
+
+    if not success then
+        warn("[Auto nhiệm vụ khó] Lỗi:", err)
+    end
+end
+
+local function FireTurnInQuestDialogue()
+    local success, err = pcall(function()
+        local npcFunction = workspace:WaitForChild("NPC")
+            :WaitForChild("Function")
+            :WaitForChild("Ticket Quest Giver")
+
+        ChooseDialogueOptionEvent:FireServer(
+            "Ticket Quest Giver",
+            1,
+            "Quest",
+            {
+                npcFunction
+            }
+        )
+        HideDialogueFrame()
+    end)
+
+    if not success then
+        warn("[Auto trả nhiệm vụ] Lỗi:", err)
+    end
+end
+
+QuestSection:Toggle({
+    Title = "Auto nhiệm vụ khó",
+    Value = false,
+    Callback = function(value)
+        AutoHardQuestEnabled = value
+        AutoHardQuestTaskId += 1
+        local thisTaskId = AutoHardQuestTaskId
+
+        if value then
+            StartDialogueSuppressor()
+            task.spawn(function()
+                while AutoHardQuestEnabled and AutoHardQuestTaskId == thisTaskId do
+                    local success, mainQuest, hardQuest = pcall(GetHardQuestFrame)
+                    if success and mainQuest and not hardQuest then
+                        FireHardQuestDialogue()
+                    elseif not success then
+                        warn("[Auto nhiệm vụ khó] Không thể kiểm tra Quest UI.")
+                    end
+                    task.wait(QUEST_SCAN_INTERVAL)
+                end
+            end)
+        end
+    end,
+})
+
+QuestSection:Toggle({
+    Title = "Auto trả nhiệm vụ",
+    Value = false,
+    Callback = function(value)
+        AutoTurnInQuestEnabled = value
+        AutoTurnInQuestTaskId += 1
+        local thisTaskId = AutoTurnInQuestTaskId
+
+        if value then
+            StartDialogueSuppressor()
+            task.spawn(function()
+                while AutoTurnInQuestEnabled and AutoTurnInQuestTaskId == thisTaskId do
+                    local success, mainQuest, hardQuest = pcall(GetHardQuestFrame)
+                    if success and hardQuest then
+                        local questFolder = hardQuest:FindFirstChild("Quest")
+                        local firstQuest = questFolder and questFolder:FindFirstChild("1")
+                        if firstQuest
+                            and (firstQuest:IsA("TextLabel") or firstQuest:IsA("TextButton"))
+                            and firstQuest.TextColor3 == Color3.fromRGB(144, 255, 110) then
+                            FireTurnInQuestDialogue()
+                        end
+                    elseif not success then
+                        warn("[Auto trả nhiệm vụ] Không thể kiểm tra Quest UI.")
+                    end
+                    task.wait(QUEST_SCAN_INTERVAL)
+                end
+            end)
+        end
+    end,
+})
+
 --// ANTI AFK
 local AntiAfkEnabled = false
 local AntiAfkConnection = nil
@@ -595,7 +703,6 @@ AntiAfkSection:Button({
     Title = "Anti afk",
     Callback = function()
         if AntiAfkEnabled then
-            print("[Anti AFK] Đã được bật trước đó")
             return
         end
         AntiAfkEnabled = true
@@ -607,9 +714,7 @@ AntiAfkSection:Button({
                 local afkEvent = events and events:FindFirstChild("AFK")
                 if afkEvent then
                     afkEvent:Destroy()
-                    print("[Anti AFK] Đã xóa ReplicatedStorage.Events.AFK ở phía client")
                 else
-                    print("[Anti AFK] Không tìm thấy Events.AFK hoặc event đã bị xóa")
                 end
             end)
             if not ok then
@@ -640,7 +745,6 @@ AntiAfkSection:Button({
                     VirtualUser:ClickButton2(Vector2.new(0, 0))
                 end)
             end)
-            print("[Anti AFK] Đã bật")
         end)
     end,
 })
@@ -662,9 +766,7 @@ MinigameSection:Toggle({
     Callback = function(value)
         MinigameEnabled = value
         if value then
-            print("[BossPhase2Test] Minigame enabled")
         else
-            print("[BossPhase2Test] Minigame disabled")
         end
     end,
 })
@@ -700,7 +802,6 @@ RunService.RenderStepped:Connect(function()
     end)
 
     if success then
-        print("[BossPhase2Test] Sent:", payload.Hit, payload.Index)
         testIndex += 1
     else
         warn("[BossPhase2Test] Failed:", err)
