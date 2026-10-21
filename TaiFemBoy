@@ -538,29 +538,37 @@ AutoFishSection:Toggle({
                             if sequenceIndex > #SkillSequence then
                                 sequenceIndex = 1
                             end
-                            -- Chờ SkillLocked chuyển true rồi trở về false. Có timeout để vòng lặp
-                            -- không bị kẹt vĩnh viễn nếu game không replicate attribute này.
+                            -- Chờ ngắn để xem SkillLocked có chuyển true sau khi dùng chiêu không.
+                            -- Nếu không chuyển true trong 0.4 giây, bỏ qua ngay sang chiêu kế tiếp.
                             local sawLocked = false
                             local waitStartedAt = os.clock()
-                            while AutoSkillEnabled and AutoSkillTaskId == thisTaskId do
+                            while AutoSkillEnabled and AutoSkillTaskId == thisTaskId
+                                and os.clock() - waitStartedAt < 0.4 do
                                 task.wait(0.05)
                                 character = LocalPlayer.Character
                                 if not character or not character.Parent then
                                     break
                                 end
-
-                                local currentLocked = character:GetAttribute("SkillLocked")
-                                if currentLocked == true then
+                                if character:GetAttribute("SkillLocked") == true then
                                     sawLocked = true
-                                elseif sawLocked and currentLocked ~= true then
-                                    break
-                                elseif not sawLocked and os.clock() - waitStartedAt >= 2 then
-                                    -- Không thấy chu kỳ khóa: tránh treo Auto chiêu mãi mãi.
                                     break
                                 end
                             end
-                            if not sawLocked then
-                                task.wait(0.2)
+
+                            if sawLocked then
+                                -- Nếu khóa có bật, chờ được nhả rồi mới dùng chiêu tiếp theo.
+                                local unlockStartedAt = os.clock()
+                                while AutoSkillEnabled and AutoSkillTaskId == thisTaskId
+                                    and os.clock() - unlockStartedAt < 3 do
+                                    task.wait(0.05)
+                                    character = LocalPlayer.Character
+                                    if not character or not character.Parent
+                                        or character:GetAttribute("SkillLocked") ~= true then
+                                        break
+                                    end
+                                end
+                            else
+                                print("[Auto chiêu] SkillLocked không chuyển true; chuyển sang chiêu tiếp theo")
                             end
                         else
                             warn("[Auto chiêu] UseSkill lỗi:", err)
@@ -571,6 +579,68 @@ AutoFishSection:Toggle({
                     task.wait(0.05)
                 end
             end
+        end)
+    end,
+})
+
+
+--// ANTI AFK
+local AntiAfkEnabled = false
+local AntiAfkConnection = nil
+local AntiAfkSection = OtherTab:Section({
+    Title = "Anti AFK",
+})
+
+AntiAfkSection:Button({
+    Title = "Anti afk",
+    Callback = function()
+        if AntiAfkEnabled then
+            print("[Anti AFK] Đã được bật trước đó")
+            return
+        end
+        AntiAfkEnabled = true
+
+        -- Gỡ event AFK nếu có trong ReplicatedStorage.Events.
+        task.spawn(function()
+            local ok, err = pcall(function()
+                local events = ReplicatedStorage:FindFirstChild("Events")
+                local afkEvent = events and events:FindFirstChild("AFK")
+                if afkEvent then
+                    afkEvent:Destroy()
+                    print("[Anti AFK] Đã xóa ReplicatedStorage.Events.AFK ở phía client")
+                else
+                    print("[Anti AFK] Không tìm thấy Events.AFK hoặc event đã bị xóa")
+                end
+            end)
+            if not ok then
+                warn("[Anti AFK] Không thể xóa Events.AFK:", err)
+            end
+        end)
+
+        -- Chặn trạng thái idle của client bằng thao tác chuột ảo định kỳ.
+        task.spawn(function()
+            local ok, VirtualUser = pcall(function()
+                return game:GetService("VirtualUser")
+            end)
+            if not ok or not VirtualUser then
+                warn("[Anti AFK] VirtualUser không khả dụng trong môi trường này")
+                return
+            end
+
+            if AntiAfkConnection then
+                AntiAfkConnection:Disconnect()
+                AntiAfkConnection = nil
+            end
+            AntiAfkConnection = LocalPlayer.Idled:Connect(function()
+                if not AntiAfkEnabled then
+                    return
+                end
+                pcall(function()
+                    VirtualUser:CaptureController()
+                    VirtualUser:ClickButton2(Vector2.new(0, 0))
+                end)
+            end)
+            print("[Anti AFK] Đã bật")
         end)
     end,
 })
